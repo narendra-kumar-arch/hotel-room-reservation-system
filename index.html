@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Room Reservation System</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/react.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/react-dom.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        #root {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        const HotelReservationSystem = () => {
+            const initializeRooms = () => {
+                const rooms = [];
+                for (let floor = 1; floor <= 10; floor++) {
+                    const roomCount = floor < 10 ? 10 : 7;
+                    const floorNumber = floor < 10 ? floor * 100 : 1000;
+                    for (let i = 1; i <= roomCount; i++) {
+                        rooms.push({
+                            id: `${floorNumber + i}`,
+                            floor: floor,
+                            roomNumber: floorNumber + i,
+                            position: i,
+                            available: true,
+                            booked: false,
+                            distance: i - 1
+                        });
+                    }
+                }
+                return rooms;
+            };
+
+            const [rooms, setRooms] = useState(initializeRooms());
+            const [numRooms, setNumRooms] = useState(1);
+            const [bookedRooms, setBookedRooms] = useState([]);
+            const [message, setMessage] = useState('');
+
+            // Calculate travel time between two rooms
+            const calculateTravelTime = (room1, room2) => {
+                if (room1.floor === room2.floor) {
+                    return Math.abs(room1.position - room2.position);
+                }
+                const verticalTime = Math.abs(room1.floor - room2.floor) * 2;
+                const horizontalTime = Math.abs(room1.position - room2.position);
+                return verticalTime + horizontalTime;
+            };
+
+            // Calculate total travel time for a set of rooms
+            const calculateTotalTravelTime = (roomSet) => {
+                if (roomSet.length <= 1) return 0;
+                const sorted = [...roomSet].sort((a, b) => {
+                    if (a.floor !== b.floor) return a.floor - b.floor;
+                    return a.position - b.position;
+                });
+                let total = 0;
+                for (let i = 0; i < sorted.length - 1; i++) {
+                    total += calculateTravelTime(sorted[i], sorted[i + 1]);
+                }
+                return total;
+            };
+
+            // Find best rooms to book
+            const findBestRooms = (count) => {
+                const available = rooms.filter(r => r.available);
+                
+                if (available.length < count) {
+                    setMessage(`Only ${available.length} rooms available, need ${count}`);
+                    return [];
+                }
+
+                // Priority 1: Try to get all rooms on the same floor
+                for (let floor = 1; floor <= 10; floor++) {
+                    const floorRooms = available.filter(r => r.floor === floor);
+                    if (floorRooms.length >= count) {
+                        const sorted = floorRooms.sort((a, b) => a.position - b.position);
+                        return sorted.slice(0, count);
+                    }
+                }
+
+                // Priority 2: If not possible, find the combination with minimum travel time
+                let bestCombination = [];
+                let minTime = Infinity;
+
+                const generateCombinations = (arr, r) => {
+                    if (r === 1) return arr.map(x => [x]);
+                    if (arr.length === r) return [arr];
+                    const combinations = [];
+                    for (let i = 0; i < arr.length; i++) {
+                        const head = arr[i];
+                        const tail = arr.slice(i + 1);
+                        for (const combo of generateCombinations(tail, r - 1)) {
+                            combinations.push([head, ...combo]);
+                        }
+                    }
+                    return combinations;
+                };
+
+                if (count <= 5) {
+                    const combinations = generateCombinations(available, count);
+                    for (const combo of combinations) {
+                        const time = calculateTotalTravelTime(combo);
+                        if (time < minTime) {
+                            minTime = time;
+                            bestCombination = combo;
+                        }
+                    }
+                }
+
+                return bestCombination;
+            };
+
+            const handleBook = () => {
+                if (numRooms < 1 || numRooms > 5) {
+                    setMessage('Please select between 1 and 5 rooms');
+                    return;
+                }
+
+                const selected = findBestRooms(numRooms);
+                
+                if (selected.length === 0) {
+                    setMessage('No suitable rooms found for booking');
+                    return;
+                }
+
+                const updatedRooms = rooms.map(room => {
+                    if (selected.find(s => s.id === room.id)) {
+                        return { ...room, available: false, booked: true };
+                    }
+                    return room;
+                });
+
+                setRooms(updatedRooms);
+                setBookedRooms([...bookedRooms, ...selected]);
+                
+                const roomNumbers = selected.map(r => r.roomNumber).join(', ');
+                const travelTime = calculateTotalTravelTime(selected);
+                setMessage(`✓ Booked rooms: ${roomNumbers} (Travel time: ${travelTime} min)`);
+            };
+
+            const handleRandomOccupancy = () => {
+                const updated = rooms.map(room => ({
+                    ...room,
+                    available: Math.random() > 0.4,
+                    booked: Math.random() > 0.6
+                }));
+                setRooms(updated);
+                const occupied = updated.filter(r => !r.available).length;
+                setMessage(`${occupied} rooms randomly occupied`);
+            };
+
+            const handleReset = () => {
+                setRooms(initializeRooms());
+                setBookedRooms([]);
+                setNumRooms(1);
+                setMessage('System reset - all rooms available');
+            };
+
+            const totalBooked = rooms.filter(r => r.booked).length;
+            const totalAvailable = rooms.filter(r => r.available).length;
+
+            return (
+                <div style={{
+                    maxWidth: '1200px',
+                    margin: '0 auto',
+                    padding: '20px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '8px'
+                }}>
+                    <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>
+                        🏨 Hotel Room Reservation System
+                    </h1>
+
+                    {/* Control Panel */}
+                    <div style={{
+                        backgroundColor: 'white',
+                        padding: '20px',
+                        borderRadius: '8px',
+                        marginBottom: '20px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '15px',
+                        alignItems: 'end'
+                    }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#333' }}>
+                                Number of Rooms (1-5)
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                max="5"
+                                value={numRooms}
+                                onChange={(e) => setNumRooms(parseInt(e.target.value) || 1)}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    border: '2px solid #e0e0e0',
+                                    borderRadius: '4px',
+                                    fontSize: '14px',
+                                    transition: 'border-color 0.2s'
+                                }}
+                            />
+                        </div>
+
+                        <button
+                            onClick={handleBook}
+                            style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#2563eb',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#1d4ed8';
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#2563eb';
+                                e.target.style.transform = 'translateY(0)';
+                                e.target.style.boxShadow = 'none';
+                            }}
+                        >
+                            📌 Book Rooms
+                        </button>
+
+                        <button
+                            onClick={handleRandomOccupancy}
+                            style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#7c3aed',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#6d28d9';
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#7c3aed';
+                                e.target.style.transform = 'translateY(0)';
+                                e.target.style.boxShadow = 'none';
+                            }}
+                        >
+                            🎲 Random Occupancy
+                        </button>
+
+                        <button
+                            onClick={handleReset}
+                            style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#dc2626',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#b91c1c';
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#dc2626';
+                                e.target.style.transform = 'translateY(0)';
+                                e.target.style.boxShadow = 'none';
+                            }}
+                        >
+                            🔄 Reset All
+                        </button>
+                    </div>
+
+                    {/* Status Message */}
+                    {message && (
+                        <div style={{
+                            padding: '12px 16px',
+                            backgroundColor: '#eff6ff',
+                            border: '2px solid #3b82f6',
+                            borderRadius: '4px',
+                            marginBottom: '20px',
+                            color: '#1e40af',
+                            fontSize: '14px',
+                            animation: 'slideIn 0.3s ease-out'
+                        }}>
+                            {message}
+                        </div>
+                    )}
+
+                    {/* Statistics */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                        gap: '15px',
+                        marginBottom: '20px'
+                    }}>
+                        <div style={{
+                            backgroundColor: 'white',
+                            padding: '15px',
+                            borderRadius: '4px',
+                            textAlign: 'center',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>Total Rooms</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#333' }}>97</div>
+                        </div>
+                        <div style={{
+                            backgroundColor: 'white',
+                            padding: '15px',
+                            borderRadius: '4px',
+                            textAlign: 'center',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>Available</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{totalAvailable}</div>
+                        </div>
+                        <div style={{
+                            backgroundColor: 'white',
+                            padding: '15px',
+                            borderRadius: '4px',
+                            textAlign: 'center',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>Booked</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ef4444' }}>{totalBooked}</div>
+                        </div>
+                        <div style={{
+                            backgroundColor: 'white',
+                            padding: '15px',
+                            borderRadius: '4px',
+                            textAlign: 'center',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>Occupancy</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>
+                                {Math.round((totalBooked / 97) * 100)}%
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Room Visualization */}
+                    <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                        <h2 style={{ marginTop: 0, color: '#333', marginBottom: '20px', fontSize: '18px' }}>Room Layout</h2>
+                        
+                        <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    backgroundColor: '#10b981',
+                                    borderRadius: '3px'
+                                }}></div>
+                                <span style={{ fontSize: '13px', color: '#666' }}>Available</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    backgroundColor: '#ef4444',
+                                    borderRadius: '3px'
+                                }}></div>
+                                <span style={{ fontSize: '13px', color: '#666' }}>Booked</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    backgroundColor: '#d1d5db',
+                                    borderRadius: '3px'
+                                }}></div>
+                                <span style={{ fontSize: '13px', color: '#666' }}>Occupied</span>
+                            </div>
+                        </div>
+
+                        {/* Floors */}
+                        {[...Array(10)].map((_, floorIdx) => {
+                            const floor = floorIdx + 1;
+                            const floorRooms = rooms.filter(r => r.floor === floor);
+                            
+                            return (
+                                <div key={floor} style={{ marginBottom: '15px' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '15px',
+                                        marginBottom: '8px'
+                                    }}>
+                                        <span style={{
+                                            fontWeight: '600',
+                                            color: '#333',
+                                            minWidth: '80px',
+                                            fontSize: '13px'
+                                        }}>
+                                            Floor {floor}:
+                                        </span>
+                                        <div style={{
+                                            display: 'flex',
+                                            gap: '8px',
+                                            flexWrap: 'wrap',
+                                            flex: 1
+                                        }}>
+                                            {floorRooms.map(room => (
+                                                <div
+                                                    key={room.id}
+                                                    style={{
+                                                        width: '36px',
+                                                        height: '36px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        borderRadius: '4px',
+                                                        backgroundColor: room.booked ? '#ef4444' : room.available ? '#10b981' : '#d1d5db',
+                                                        color: 'white',
+                                                        fontSize: '11px',
+                                                        fontWeight: '600',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s',
+                                                        border: '1px solid rgba(0,0,0,0.1)',
+                                                        boxShadow: bookedRooms.find(b => b.id === room.id) ? '0 0 8px rgba(239,68,68,0.4)' : 'none'
+                                                    }}
+                                                    title={`Room ${room.roomNumber} - ${room.booked ? 'Booked' : room.available ? 'Available' : 'Occupied'}`}
+                                                >
+                                                    {room.roomNumber % 100}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Info Section */}
+                    <div style={{
+                        marginTop: '20px',
+                        backgroundColor: '#f9fafb',
+                        padding: '15px',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        color: '#666',
+                        lineHeight: '1.6',
+                        border: '1px solid #e5e7eb'
+                    }}>
+                        <strong style={{ color: '#333' }}>📋 How it works:</strong>
+                        <ul style={{ margin: '10px 0 0 20px', paddingLeft: 0 }}>
+                            <li>Enter number of rooms (1-5) you want to book</li>
+                            <li>System prioritizes booking rooms on the same floor first</li>
+                            <li>If unavailable, it picks rooms that minimize total travel time</li>
+                            <li>Travel time = horizontal (1 min/room) + vertical (2 min/floor)</li>
+                            <li>Green = Available | Red = Just booked | Gray = Previously occupied</li>
+                        </ul>
+                    </div>
+
+                    <style>{`
+                        @keyframes slideIn {
+                            from {
+                                opacity: 0;
+                                transform: translateY(-10px);
+                            }
+                            to {
+                                opacity: 1;
+                                transform: translateY(0);
+                            }
+                        }
+                    `}</style>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<HotelReservationSystem />, document.getElementById('root'));
+    </script>
+</body>
+</html>
